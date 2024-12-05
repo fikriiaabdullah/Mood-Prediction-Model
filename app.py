@@ -6,9 +6,39 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 import numpy as np
 import pickle
 import os
+import plotly.graph_objs as go
 
-# Set page configuration
-st.set_page_config(page_title="Mood Detector", layout="centered")
+# Set page configuration with a custom icon
+st.set_page_config(
+    page_title="Mood Detector", 
+    page_icon=":brain:", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for styling
+st.markdown("""
+<style>
+.big-font {
+    font-size:20px !important;
+    color: #333;
+}
+.mood-title {
+    font-size:24px !important;
+    color: #2C3E50;
+    text-align: center;
+}
+.stButton>button {
+    background-color: #3498DB;
+    color: white;
+    transition: all 0.3s ease;
+}
+.stButton>button:hover {
+    background-color: #2980B9;
+    transform: scale(1.05);
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Define the correct mood mapping (mapping mood to labels)
 MOOD_MAPPING = {
@@ -18,6 +48,16 @@ MOOD_MAPPING = {
     3: 'Anger', 
     4: 'Fear', 
     5: 'Surprise'
+}
+
+# Mood color mapping for visualization
+MOOD_COLORS = {
+    'Sadness': '#3498DB',    # Blue
+    'Joy': '#F1C40F',        # Yellow
+    'Love': '#E74C3C',       # Red
+    'Anger': '#E67E22',      # Orange
+    'Fear': '#9B59B6',       # Purple
+    'Surprise': '#1ABC9C'    # Turquoise
 }
 
 # Load the pre-trained model, tokenizer, and encoder
@@ -56,23 +96,9 @@ model, tokenizer, encoder = load_resources()
 # Set the max length for padding (same as used during training)
 MAX_LEN = 150
 
-# Function to preprocess the input text
-def preprocess_text(text, tokenizer, MAX_LEN):
-    try:
-        # Tokenize the input text
-        tokenized_text = tokenizer.texts_to_sequences([text])
-        
-        # Pad the tokenized text to match the expected input shape
-        padded_text = pad_sequences(tokenized_text, maxlen=MAX_LEN, padding='post', truncating='post')
-        
-        return padded_text
-    except Exception as e:
-        st.error(f"Error during preprocessing: {e}")
-        return None
-
 def predict_mood(text):
     seq = tokenizer.texts_to_sequences([text])
-    padded = pad_sequences(seq, maxlen=MAX_LEN, padding='post', truncating='post')  # Gunakan 'post' untuk padding dan truncating
+    padded = pad_sequences(seq, maxlen=MAX_LEN, padding='post', truncating='post')
     
     # Ubah tipe data input menjadi float32
     padded = np.array(padded, dtype=np.float32)
@@ -81,7 +107,7 @@ def predict_mood(text):
     infer = model.signatures["serve"]
     
     # Predict mood using the pre-trained model
-    prediction = infer(tf.convert_to_tensor(padded))["output_0"][0].numpy()  # Use 'output_0' as the output layer
+    prediction = infer(tf.convert_to_tensor(padded))["output_0"][0].numpy()
     
     predicted_class = np.argmax(prediction)
     mood = MOOD_MAPPING[predicted_class]
@@ -90,42 +116,114 @@ def predict_mood(text):
     
     return mood, confidence_scores
 
-# Streamlit app
-st.title("Mood Detector")
-st.write("This app helps you understand how your text might represent different moods.")
+def create_mood_chart(confidence_scores):
+    # Create a bar chart using Plotly
+    fig = go.Figure(data=[
+        go.Bar(
+            x=list(confidence_scores.keys()),
+            y=list(confidence_scores.values()),
+            marker_color=[MOOD_COLORS.get(mood, '#3498DB') for mood in confidence_scores.keys()]
+        )
+    ])
+    
+    fig.update_layout(
+        title='Mood Confidence Breakdown',
+        xaxis_title='Moods',
+        yaxis_title='Confidence (%)',
+        title_x=0.5,
+        height=400,
+        width=600
+    )
+    
+    return fig
 
-st.write("### Instructions:")
-st.write("1. Type a sentence or statement in the box below.")
-st.write("2. Click on the 'Detect Mood' button to see which mood your text expresses.")
-st.write("3. The app will display the mood and confidence level.")
-
-# Text input area
-text_input = st.text_area("Enter a sentence:", height=100)
-
-# Display button and output
-if st.button("Detect Mood"):
-    if model is not None and tokenizer is not None:
-        if text_input.strip():  # Check if the input is not empty
-            predicted_mood, confidence = predict_mood(text_input)
-            if predicted_mood:
-                st.write(f"### Predicted Mood: **{predicted_mood}**")
+# Streamlit app main layout
+def main():
+    # Sidebar for additional information
+    st.sidebar.title("🧠 Mood Detector Guide")
+    st.sidebar.info("""
+    ### How to Use:
+    1. Enter a sentence in the text area
+    2. Click 'Detect Mood'
+    3. See the predicted mood and confidence scores
+    
+    ### Tip:
+    - Try different types of sentences
+    - Longer sentences might give more accurate results
+    """)
+    
+    # Main content
+    st.title("🌈 Mood Detector: Understand Your Emotions")
+    
+    st.markdown("""
+    <p class="big-font">
+    Explore the emotional undertones of your text. 
+    Our AI-powered tool analyzes your words to detect the underlying mood.
+    </p>
+    """, unsafe_allow_html=True)
+    
+    # Text input area with custom styling
+    text_input = st.text_area(
+        "Enter a sentence:", 
+        height=200, 
+        help="Type or paste a sentence to detect its emotional tone"
+    )
+    
+    # Mood detection button
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        detect_button = st.button("🔍 Detect Mood", use_container_width=True)
+    
+    # Prediction logic
+    if detect_button:
+        if model is not None and tokenizer is not None:
+            if text_input.strip():
+                try:
+                    # Predict mood
+                    predicted_mood, confidence_scores = predict_mood(text_input)
+                    
+                    # Display results in columns
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown(f"<h2 class='mood-title'>Predicted Mood: {predicted_mood}</h2>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div style='background-color:{MOOD_COLORS.get(predicted_mood, '#3498DB')};
+                                    color:white;
+                                    padding:10px;
+                                    border-radius:10px;
+                                    text-align:center;'>
+                            <h3>🎭 {predicted_mood}</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        # Create and display mood chart
+                        mood_chart = create_mood_chart(confidence_scores)
+                        st.plotly_chart(mood_chart, use_container_width=True)
+                    
+                    # Detailed confidence scores
+                    st.write("### Confidence Scores:")
+                    confidence_cols = st.columns(len(confidence_scores))
+                    for i, (mood, score) in enumerate(confidence_scores.items()):
+                        with confidence_cols[i]:
+                            st.metric(mood, f"{score:.2f}%", help=f"Confidence for {mood} mood")
                 
-                # Display confidence for each mood
-                st.write("### Confidence Scores:")
-                for mood, score in confidence.items():
-                    st.write(f"{mood}: {score:.2f}%")
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
             else:
-                st.warning("Something went wrong with the prediction. Please try again.")
+                st.warning("Please enter a valid sentence.")
         else:
-            st.warning("Please enter a valid sentence.")
-    else:
-        st.warning("Model, tokenizer, or encoder is not loaded properly. Please check the resources.")
+            st.warning("Model not loaded properly. Please check the resources.")
+    
+    # Additional information
+    st.markdown("---")
+    st.markdown("""
+    ### 💡 About Mood Detection
+    This AI-powered tool uses machine learning to analyze the emotional tone of text.
+    It can help you understand the underlying sentiment of sentences.
+    """)
 
-# Add some fun info and encourage kids to experiment
-st.write("---")
-st.write("### Fun Fact:")
-st.write("Did you know that people express their moods in different ways? This tool helps you see how your words can show emotions!")
-
-# Footer for encouragement
-st.write("---")
-st.write("Give it a try! Type a sentence, and let's see which mood your words express!")
+# Run the app
+if __name__ == "__main__":
+    main()
