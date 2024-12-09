@@ -6,6 +6,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 import numpy as np
 import pickle
 import os
+import pandas as pd
 import plotly.graph_objs as go
 
 # Set page configuration with a custom icon
@@ -137,7 +138,126 @@ def create_mood_chart(confidence_scores):
     
     return fig
 
-# Streamlit app main layout
+def load_random_quote(mood):
+    """
+    Load a random quote for the given mood from the Quotes_Mood CSV file
+    
+    Args:
+        mood (str): The detected mood
+    
+    Returns:
+        str: A random quote for the specified mood
+    """
+    try:
+        # Construct the path to the Quotes_Mood CSV file
+        quotes_filename = os.path.join('Cafe-Data', 'Quotes_Mood.csv')
+        
+        # Read the CSV file
+        df = pd.read_csv(quotes_filename)
+        
+        # Filter quotes by mood (case-insensitive)
+        mood_quotes = df[df['Mood'].str.lower() == mood.lower()]
+        
+        # If quotes are found, return a random quote
+        if not mood_quotes.empty:
+            random_quote = mood_quotes.sample(n=1).iloc[0]['Quotes']
+            return random_quote
+        else:
+            return "No quote found for this mood."
+    
+    except FileNotFoundError:
+        st.warning("Quotes file not found.")
+        return "Quote file is missing."
+    except Exception as e:
+        st.error(f"An error occurred while loading quotes: {e}")
+        return "Error retrieving quote."
+
+def load_cafe_data(mood):
+    # Convert mood to lowercase and find the corresponding CSV file
+    mood_lower = mood.lower()
+    csv_filename = os.path.join('Cafe-Data', f"{mood_lower}_caffe.csv")
+    
+    try:
+        # Try to load the CSV file
+        df = pd.read_csv(csv_filename)
+        return df
+    except FileNotFoundError:
+        st.warning(f"No cafe data found for {mood} mood.")
+        return None
+    except Exception as e:
+        st.error(f"An error occurred while loading cafe data: {e}")
+        return None
+
+def display_cafe_recommendations(df):
+    if df is None or df.empty:
+        st.warning("No cafe recommendations available.")
+        return
+    
+    # Select relevant columns for display
+    display_columns = ['Title', 'Rating', 'Address', 'Category']
+    
+    # Ensure selected columns exist in the DataFrame
+    available_columns = [col for col in display_columns if col in df.columns]
+    
+    if not available_columns:
+        st.warning("No suitable columns found for display.")
+        return
+    
+    # Display cafes in a more interactive way
+    st.subheader("🍵 Cafe Recommendations")
+    
+    # Add pagination
+    cafes_per_page = 10
+    total_cafes = len(df)
+    
+    # Initialize page number in session state if not exists
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 1
+    
+    # Function to increment page
+    def increment_page():
+        if st.session_state.current_page < max(1, (total_cafes - 1) // cafes_per_page + 1):
+            st.session_state.current_page += 1
+    
+    # Function to decrement page
+    def decrement_page():
+        if st.session_state.current_page > 1:
+            st.session_state.current_page -= 1
+    
+    # Create columns for pagination
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col1:
+        st.button('Previous', on_click=decrement_page, 
+                  disabled=st.session_state.current_page == 1)
+    
+    with col2:
+        st.write(f"Page {st.session_state.current_page} of {max(1, (total_cafes - 1) // cafes_per_page + 1)}")
+    
+    with col3:
+        st.button('Next', on_click=increment_page, 
+                  disabled=st.session_state.current_page == max(1, (total_cafes - 1) // cafes_per_page + 1))
+    
+    # Calculate start and end indices for current page
+    start_idx = (st.session_state.current_page - 1) * cafes_per_page
+    end_idx = min(start_idx + cafes_per_page, total_cafes)
+    
+    # Display cafes for the current page
+    st.markdown(f"**Showing {start_idx + 1} - {end_idx} of {total_cafes} cafes**")
+    
+    for index, row in df.iloc[start_idx:end_idx].iterrows():
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"### {row['Title']}")
+            st.write(f"**Rating:** {row.get('Rating', 'N/A')}")
+        
+        with col2:
+            st.write(f"**Address:** {row.get('Address', 'Address not available')}")
+            st.write(f"**Category:** {row.get('Category', 'N/A')}")
+        
+        st.markdown("---")
+
 def main():
     # Sidebar for additional information
     st.sidebar.title("🧠 Mood Detector Guide")
@@ -145,7 +265,7 @@ def main():
     ### How to Use:
     1. Enter a sentence in the text area
     2. Click 'Detect Mood'
-    3. See the predicted mood and confidence scores
+    3. See the predicted mood and cafe recommendations
     
     ### Tip:
     - Try different types of sentences
@@ -157,8 +277,7 @@ def main():
     
     st.markdown("""
     <p class="big-font">
-    Explore the emotional undertones of your text. 
-    Our AI-powered tool analyzes your words to detect the underlying mood.
+    Explore the emotional undertones of your text and get personalized cafe recommendations!
     </p>
     """, unsafe_allow_html=True)
     
@@ -183,7 +302,7 @@ def main():
                     predicted_mood, confidence_scores = predict_mood(text_input)
                     
                     # Display results in columns
-                    col1, col2 = st.columns(2)
+                    col1, col2 = st.columns([2, 2])
                     
                     with col1:
                         st.markdown(f"<h2 class='mood-title'>Predicted Mood: {predicted_mood}</h2>", unsafe_allow_html=True)
@@ -195,6 +314,24 @@ def main():
                                     text-align:center;'>
                             <h3>🎭 {predicted_mood}</h3>
                         </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Load and display random quote
+                        random_quote = load_random_quote(predicted_mood)
+                        st.markdown(f"""
+                            <div style='text-align:center; 
+                                        margin-top:15px; 
+                                        padding:10px; 
+                                        background-color:rgba(0,0,0,0.05); 
+                                        border-radius:10px;'>
+                                <h4 style='color:#555;'>💬 Today's word for you</h4>
+                                <p style='font-size:18px; 
+                                        font-style:italic; 
+                                        line-height:1.5; 
+                                        color:#333;'>
+                                    {random_quote}
+                                </p>
+                            </div>
                         """, unsafe_allow_html=True)
                     
                     with col2:
@@ -208,6 +345,11 @@ def main():
                     for i, (mood, score) in enumerate(confidence_scores.items()):
                         with confidence_cols[i]:
                             st.metric(mood, f"{score:.2f}%", help=f"Confidence for {mood} mood")
+                    
+                    # Load and display cafe recommendations
+                    cafe_data = load_cafe_data(predicted_mood)
+                    if cafe_data is not None:
+                        display_cafe_recommendations(cafe_data)
                 
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
@@ -220,8 +362,8 @@ def main():
     st.markdown("---")
     st.markdown("""
     ### 💡 About Mood Detection
-    This AI-powered tool uses machine learning to analyze the emotional tone of text.
-    It can help you understand the underlying sentiment of sentences.
+    This AI-powered tool uses machine learning to analyze the emotional tone of text
+    and provide personalized cafe recommendations based on your mood!
     """)
 
 # Run the app
