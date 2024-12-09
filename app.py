@@ -273,7 +273,7 @@ def main():
     """)
     
     # Main content
-    st.title("🌈 Mood Detector: Understand Your Emotions")
+    st.title("🌈 Mood Detector: Understand Your Emotions and Get Your Best Recommendations")
     
     st.markdown("""
     <p class="big-font">
