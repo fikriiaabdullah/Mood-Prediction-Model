@@ -260,7 +260,7 @@ def display_cafe_recommendations(df):
 
 def main():
     # Sidebar for additional information
-    st.sidebar.title("🧠 Mood Detector Guide")
+    st.sidebar.title("🧠 Cafe Recomendation base on Mood")
     st.sidebar.info("""
     ### How to Use:
     1. Enter a sentence in the text area
